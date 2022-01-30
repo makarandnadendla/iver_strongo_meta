@@ -1,0 +1,13 @@
+,X,study,country,prevalence_2020,event.e,n.e,event.c,n.c,covid_severity
+1,1,Lopez-Medina,Colombia,18.4,0,200,1,198,Mild/Moderate
+2,2,Mahmud,Bangladesh,17.3,0,183,3,183,Mild/Moderate
+3,3,Ravikirti,India,10.4,0,55,4,57,Mild/Moderate
+4,4,Rezai,Iran,4.8,1,35,0,34,Mild/Moderate
+5,5,Vallejos,Argentina,5.1,4,250,3,251,Mild/Moderate
+6,6,I-TECH (Malaysia Ministry of Health),Malaysia,15.9,3,241,10,249,Mild/Moderate
+7,7,Together,Soiutheastern Brazil,3.9,18,677,22,678,Mild/Moderate
+8,8,Abd-Elsalam,Egypt,4.9,3,82,4,82,Severe
+9,9,Fonseca,North Brazil,5.3,12,52,25,115,Severe
+10,10,Gonzalez,Mexico,7,5,36,6,37,Severe
+11,11,Hashim,Iraq,5.3,2,70,6,70,Severe
+12,12,Okumus,Turkey,5.6,6,36,9,30,Severe
