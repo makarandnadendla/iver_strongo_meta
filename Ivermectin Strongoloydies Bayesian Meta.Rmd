@@ -1,0 +1,195 @@
+---
+title: "Ivermectin Strongyloides Meta"
+author: Makarand Nadendla
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(meta)
+library(metafor)
+library(metasens)
+library(grid)
+library(here)
+library(brms)
+library(showtext)
+library(tidybayes)
+library(modelr)
+library(tidyverse)
+library(extraDistr)
+library(shinystan)
+
+iver_raw_dat <- read.csv(here("meta_reg_iver_death.csv"))
+font_add_google("Manrope", "mrope")
+
+showtext_auto()
+```
+
+Loading and Preparing the Data and calculating Effect Sizes for the Meta Analysis
+
+```{r}
+iver_dat <- as_tibble(iver_raw_dat)
+
+# Load the data and calculate the log risk ratios and their respective variances. Then convert to risk ratio and risk ratio standard error
+#iver_dat <- iver_dat %>% filter(study != "Hashim", study != "Gonzalez", study != "Okumus")
+
+iver_dat <- iver_dat %>% select(study, country, prevalence_2020, event.e, n.e, event.c, n.c, covid_severity)
+#iver_dat <- iver_dat %>% mutate(prevalence_2020 = prevalence_2020/5)
+iver_dat <- summary(escalc(ai = event.e,
+              n1i = n.e,
+              ci = event.c,
+              n2i = n.c, measure = "RR", data = iver_dat))
+iver_dat <- iver_dat %>% mutate(rr = exp(yi), rr_se = exp(sei))
+```
+Visualize the data before performing the meta regression to check linearity assumption
+
+```{r}
+
+g<-ggplot(data=iver_dat, aes(x=prevalence_2020,y=exp(yi))) +
+  
+  labs(title="Ivermectin Treatment: ACM (RR) on Strongyloides Prevalence",x="Strongyloides Prevalence (Parasitological) in Regional Population (Percent)", y="All-Cause Mortality (Log Risk Ratio)") + 
+  
+  geom_point(aes(size = 1/sei), shape = 21, colour = "black", fill = "darkgray", stroke = 1) +
+  
+  guides(size = FALSE) +
+  
+  theme(text = element_text(family = "mrope"), plot.title = element_text(face = "bold",hjust = 0.5))
+
+#png(file = "iverstrongo_lineartrend.png")
+
+#g
+
+#dev.off()
+
+g
+
+```
+
+Running the Bayesian Meta Regression via brms
+
+```{r}
+set.seed(42)
+
+# Using brms to construct the model
+
+priors_2 <- c(prior(normal(0,100), class = sd), prior(normal(0,1e6), class = Intercept))
+
+m.brm2 <- brm(yi|se(sei) ~ 1 + prevalence_2020 + (1|study), family = "gaussian",
+             data = iver_dat, iter = 4000, prior = priors_2)
+
+pairs(m.brm2)
+plot(m.brm2)
+fixef(m.brm2)
+m.brm2
+pp_check(m.brm2)
+```
+Code for preparing the shinystan object to put on the cloud
+
+```{r}
+#as.shinystan.brmfit <- function (brmfit, model.name) {
+#draws <- as.array(brmfit)
+#sampler_params <- rstan::get_sampler_params(brmfit$fit, inc_warmup = FALSE)
+#control <- brmfit$fit@stan_args[[1]]$control
+#if (is.null(control)) {
+#  max_td <- 10
+#} else {
+#  max_td <- control$max_treedepth
+#  if (is.null(max_td)) {
+#    max_td <- 10
+#  }
+#}
+#sso <- shinystan::as.shinystan(
+#  X = draws, 
+#  model_name = model.name,
+#  warmup = 0, 
+#  sampler_params = sampler_params, 
+#  max_treedepth = max_td,
+#  algorithm = "NUTS"
+#)
+#return (sso)
+#}
+```
+
+Add the ShinyStan representation of the Bayesian model to the Cloud
+
+```{r}
+#m.brm2.shinystan <- as.shinystan.brmfit(m.brm2, model.name = "Ivermectin Treatment: All-Cause Mortality (Log Relative Risk) on Strongyloides Prevalence")
+#launch_shinystan(m.brm2.shinystan)
+#m.brm2.shinystan <- deploy_shinystan(m.brm2.shinystan, appName = "IvermectinMetaStrongyloides")
+```
+
+```{r}
+
+#g<- iver_dat %>%
+  
+#  data_grid(prevalence_2020 = seq_range(prevalence_2020, n = 10), sei = seq_range(sei, n = 5)) %>%
+  
+#  add_predicted_draws(m.brm2, re_formula = NA) 
+
+# set seed
+
+set.seed(42)
+
+g_mean <- iver_dat %>%
+  
+  data_grid(prevalence_2020 = seq_range(prevalence_2020, n = 10), sei = seq_range(sei, n = 5)) %>%
+  
+  add_epred_draws(m.brm2, ndraws = 200, re_formula = NA)
+```
+
+```{r}
+#g %>%
+#  
+#  ggplot(aes(x=prevalence_2020,y=exp(yi))) +
+#
+#  stat_lineribbon(aes(y = exp(.prediction)), .width = c(.95), color = "#08519C") +
+#  
+#  geom_point(data = iver_dat, 
+#             aes(size = 1/sei), 
+#             shape = 21, colour = "black", fill = "darkgray", stroke = 1) +
+#  
+#  labs(title="Ivermectin Treatment: ACM (RR) on Strongyloides Prevalence",
+#       x="Strongyloides Prevalence (Parasitological) in Regional Population (Percent)",
+#       y="All-Cause Mortality (Risk Ratio)") + 
+#  
+#  guides(size = FALSE) +
+#  
+#  theme(text = element_text(family = "mrope"), 
+#        plot.title = element_text(face = "bold",hjust = 0.5)) +
+#  
+#  scale_fill_brewer()
+#
+```
+
+Produce the spaghetti plot
+
+```{r}
+f <- function(x) exp(fixef(m.brm2)[2]*x+fixef(m.brm2)[1])
+g_mean %>%
+  # sample 100 means from the posterior
+  ggplot(aes(x=prevalence_2020,y=exp(yi))) +
+  
+  geom_abline(slope = 0, intercept = 1, size = 0.6, linetype="f1") +
+  
+  geom_line(aes(y = exp(.epred), group = .draw), alpha = 1/10, colour = "#08519C") +
+  
+  geom_function(data = iver_dat, fun = f, colour = "#08519C", size = 1.3) + 
+  
+  geom_point(data = iver_dat, 
+             aes(size = 1/sei), 
+             shape = 21, colour = "black", fill = "darkgray", stroke = 1) + 
+  
+  
+  labs(title="Ivermectin Treatment: ACM (RR) on Strongyloides Prevalence",
+       x="Strongyloides Prevalence (Parasitological) in Regional Population (Percent)",
+       y="All-Cause Mortality (Risk Ratio)") + 
+  
+  guides(size = FALSE) +
+  
+  theme(text = element_text(family = "mrope"), 
+        plot.title = element_text(face = "bold",hjust = 0.5)) +
+  
+  scale_fill_brewer()
+```
+
+

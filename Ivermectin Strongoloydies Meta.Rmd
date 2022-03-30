@@ -6,15 +6,28 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-library(tidyverse)
 library(meta)
 library(metafor)
 library(metasens)
 library(grid)
 library(here)
+library(brms)
+library(showtext)
+library(tidybayes)
+library(modelr)
+library(tidyverse)
+library(extraDistr)
+library(shinystan)
 
 iver_raw_dat <- read.csv(here("meta_reg_iver_death.csv"))
+font_add_google("Manrope", "mrope")
+
+showtext_auto()
+
+
 ```
+
+Loading and Preparing the Data and calculating Effect Sizes for the Meta Analysis
 
 ```{r}
 iver_dat <- as_tibble(iver_raw_dat)
@@ -29,13 +42,20 @@ iver_dat <- summary(escalc(ai = event.e,
               ci = event.c,
               n2i = n.c, measure = "RR", data = iver_dat))
 iver_dat <- iver_dat %>% mutate(rr = exp(yi), rr_se = exp(sei))
-iver_dat
 ```
 
-```{r}
 # Visualize the data before performing the meta regression
-g<-ggplot(data=iver_dat, aes(x=prevalence_2020,y=yi)) +labs(title="Ivermectin Treatment: ACM (RR) on Strongyloides Prevalence",
-       x="Strongyloides Prevalence (Parasitological) in Regional Population (Percent)", y="All-Cause Mortality (Log Risk Ratio)") + geom_point()# + geom_smooth(method = "lm")
+
+```{r}
+g<-ggplot(data=iver_dat, aes(x=prevalence_2020,y=exp(yi))) +
+  
+  labs(title="Ivermectin Treatment: ACM (RR) on Strongyloides Prevalence",x="Strongyloides Prevalence (Parasitological) in Regional Population (Percent)", y="All-Cause Mortality (Log Risk Ratio)") + 
+  
+  geom_point(aes(size = 1/sei), shape = 21, colour = "black", fill = "darkgray", stroke = 1) +
+  
+  guides(size = FALSE) +
+  
+  theme(text = element_text(family = "mrope"), plot.title = element_text(face = "bold",hjust = 0.5))
 
 png(file = "iverstrongo_lineartrend.png")
 
@@ -44,6 +64,7 @@ g
 dev.off()
 
 g
+
 ```
 
 Above and Below Strongyloides Global Prevalence Subgroup Analysis (with Forest Plots)
@@ -63,18 +84,7 @@ m.b <- metabin(event.e, n.e, event.c, n.c,
 
 m.b
 
-# Forest Plot RevMan Style
-
-#pdf(file = "iverstrongometa_forestplot_revman.pdf", width = 12, height = 7)
-png(file = "iverstrongometa_forestplot_revman.png", width = 3200, height = 1900, res = 300)
-
-forest.meta(m.b ,layout = "RevMan5", pooled.events
-= TRUE, sortvar = yi ,subgroup.name = "", test.overall = TRUE, test.effect.subgroup = TRUE)
-#grid.text("Ivermectin Treatment: All-Cause Mortality subgrouped on Strongyloides Prevalence", .5, .981, gp=gpar(cex=1.4))
-
-dev.off()
-
-# Forest Plot JAMA Style 
+# Forest Plot JAMA Style (Figure 2)
 
 #pdf(file = "iverstrongometa_forestplot_jama.pdf", width = 8, height = 7)
 png(file = "iverstrongometa_forestplot_jama.png", width = 3000, height = 1500, res = 300)
@@ -85,6 +95,7 @@ forest.meta(m.b, layout = "JAMA", leftcols = c("studlab", "event.e", "n.e", "eve
 
 dev.off()
 ```
+
 Checking for Publication Bias with Funnel Plots and Other Tests
 
 ```{r}
@@ -123,16 +134,9 @@ harbord.m.b <- metabin(event.e, n.e, event.c, n.c,
                sm = "RR", title = "Ivermectin Treatment: ACM (RR) subgrouped on Strongyloides Prevalence")
 metabias(harbord.m.b, method.bias = "harbord")
 
-# Duval and Tweedie Trim and Fill Method
-tf <- trimfill(m.b)
-tf
-
-# Rücker’s Limit Meta-Analysis Method
-limitmeta(m.b)
-
 ```
 
-Meta-Regression Analysis
+Meta-Regression Analysis with associated plot (Figure 3)
 
 ```{r}
 
@@ -151,16 +155,7 @@ m.qual <- rma(ai = event.e,
 # Observe Study Results
 summary(m.qual)
 
-
-#paste0("The percent decrease in relative risk pooled estimate for each 5% increase in strongyloides prevalence is ", (1-round(exp(m.qual$b[2]),4))*100,"%  [",(1-round(exp(m.qual$ci.ub[2]),4))*100," - ",(1-round(exp(m.qual$ci.lb[2]),4))*100, "]")
-
-# Log Risk Ratio Bubble Plot
-
-png(file = "(Log RR) Ivermectin Treatment ACM on Strongyloides Prevalence.png", width = 3000, height = 1500, res = 300)
-
-regplot(m.qual,xlab="Strongyloides Prevalence (Parasitological) in Regional Population (Percent)", ylab="All-Cause Mortality (Log Risk Ratio)", main = "Ivermectin Treatment: ACM (Log RR) on Strongyloides Prevalence" ,refline = 0, legend = TRUE)
-
-dev.off()
+paste0("The percent decrease in relative risk pooled estimate for each 5% increase in strongyloides prevalence is ", (1-round(exp(m.qual$b[2]*5),4))*100,"%  [",(1-round(exp(m.qual$ci.ub[2]*5),4))*100," - ",(1-round(exp(m.qual$ci.lb[2]*5),4))*100, "]")
 
 # Risk Ratio Bubble Plot
 
@@ -169,14 +164,14 @@ png(file = "(RR) Ivermectin Treatment ACM on Strongyloides Prevalence.png", widt
 regplot(m.qual, xlab="Strongyloides Prevalence (Parasitological) in Regional Population (Percent)", ylab="All-Cause Mortality (Risk Ratio)",transf=exp ,main = "Ivermectin Treatment: ACM (RR) on Strongyloides Prevalence",refline= 1, legend = TRUE)
 
 dev.off()
-
 ```
+Checking the confidence intervals of Tau in our model
 
 ```{r}
 confint(m.qual)
-
-predict(m.qual, newmods = 0, transf = exp)
 ```
+
+Taking a look at the residuals plot for our meta regression. (Figures in Supplement)
 
 ```{r}
 png(file = "metareg_assumptions.png", width = 3000, height = 1500, res = 300)
@@ -187,10 +182,10 @@ plot(m.qual)
 dev.off()
 ```
 
+Permutation Test Results
+
 ```{r}
 # Permutation Test to test whether the results are consistent
 # over many different permutations of the data
 permutest(m.qual, iter = 10000)
 ```
-
-
