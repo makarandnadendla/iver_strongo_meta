@@ -75,7 +75,7 @@ set.seed(42)
 priors_2 <- c(prior(normal(0,100), class = sd), prior(normal(0,1e6), class = Intercept))
 
 m.brm2 <- brm(yi|se(sei) ~ 1 + prevalence_2020 + (1|study), family = "gaussian",
-             data = iver_dat, iter = 4000, prior = priors_2)
+             data = iver_dat, iter = 4000, prior = priors_2, control = list(adapt_delta = 0.91))
 
 pairs(m.brm2)
 plot(m.brm2)
@@ -86,36 +86,36 @@ pp_check(m.brm2)
 Code for preparing the shinystan object to put on the cloud
 
 ```{r}
-#as.shinystan.brmfit <- function (brmfit, model.name) {
-#draws <- as.array(brmfit)
-#sampler_params <- rstan::get_sampler_params(brmfit$fit, inc_warmup = FALSE)
-#control <- brmfit$fit@stan_args[[1]]$control
-#if (is.null(control)) {
-#  max_td <- 10
-#} else {
-#  max_td <- control$max_treedepth
-#  if (is.null(max_td)) {
-#    max_td <- 10
-#  }
-#}
-#sso <- shinystan::as.shinystan(
-#  X = draws, 
-#  model_name = model.name,
-#  warmup = 0, 
-#  sampler_params = sampler_params, 
-#  max_treedepth = max_td,
-#  algorithm = "NUTS"
-#)
-#return (sso)
-#}
+as.shinystan.brmfit <- function (brmfit, model.name) {
+draws <- as.array(brmfit)
+sampler_params <- rstan::get_sampler_params(brmfit$fit, inc_warmup = FALSE)
+control <- brmfit$fit@stan_args[[1]]$control
+if (is.null(control)) {
+  max_td <- 10
+} else {
+  max_td <- control$max_treedepth
+  if (is.null(max_td)) {
+    max_td <- 10
+  }
+}
+sso <- shinystan::as.shinystan(
+  X = draws, 
+  model_name = model.name,
+  warmup = 0, 
+  sampler_params = sampler_params, 
+  max_treedepth = max_td,
+  algorithm = "NUTS"
+)
+return (sso)
+}
 ```
 
 Add the ShinyStan representation of the Bayesian model to the Cloud
 
 ```{r}
-#m.brm2.shinystan <- as.shinystan.brmfit(m.brm2, model.name = "Ivermectin Treatment: All-Cause Mortality (Log Relative Risk) on Strongyloides Prevalence")
-#launch_shinystan(m.brm2.shinystan)
-#m.brm2.shinystan <- deploy_shinystan(m.brm2.shinystan, appName = "IvermectinMetaStrongyloides")
+m.brm2.shinystan <- as.shinystan.brmfit(m.brm2, model.name = "Ivermectin Treatment: All-Cause Mortality (Log Relative Risk) on Strongyloides Prevalence")
+launch_shinystan(m.brm2.shinystan)
+m.brm2.shinystan <- deploy_shinystan(m.brm2.shinystan, appName = "IvermectinMetaStrongyloides")
 ```
 
 ```{r}
